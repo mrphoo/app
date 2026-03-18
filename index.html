@@ -1,1 +1,120 @@
-アプリ開発
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>授業サバイバル</title>
+<style>
+    body {
+        margin: 0;
+        font-family: sans-serif;
+        background: #222;
+        color: white;
+        text-align: center;
+    }
+    canvas {
+        background: #333;
+        display: block;
+        margin: 20px auto;
+        border: 2px solid #fff;
+    }
+    #info {
+        margin-top: 10px;
+    }
+</style>
+</head>
+<body>
+
+<h1>授業サバイバル</h1>
+<p>スペースキーでスマホ操作 / 離すと隠す</p>
+<canvas id="game" width="400" height="500"></canvas>
+<div id="info">
+    スコア: <span id="score">0</span><br>
+    ハイスコア: <span id="highscore">0</span>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let holding = false; // スマホ操作中
+let teacherLook = false; // 先生が見てる
+let timer = 0;
+let score = 0;
+let gameOver = false;
+
+let highscore = localStorage.getItem("highscore") || 0;
+document.getElementById("highscore").textContent = highscore;
+
+// キー操作
+document.addEventListener("keydown", e => {
+    if (e.code === "Space") holding = true;
+});
+document.addEventListener("keyup", e => {
+    if (e.code === "Space") holding = false;
+});
+
+// メインループ
+function update() {
+    if (gameOver) return;
+
+    timer++;
+
+    // 先生の視線ランダム
+    if (timer % 120 === 0) {
+        teacherLook = Math.random() < 0.5;
+    }
+
+    // スコア加算
+    if (holding && !teacherLook) {
+        score++;
+    }
+
+    // バレたら終了
+    if (holding && teacherLook) {
+        gameOver = true;
+
+        if (score > highscore) {
+            highscore = score;
+            localStorage.setItem("highscore", highscore);
+        }
+
+        setTimeout(() => {
+            alert("バレた！スコア: " + score);
+            location.reload();
+        }, 100);
+    }
+
+    draw();
+    document.getElementById("score").textContent = score;
+
+    requestAnimationFrame(update);
+}
+
+// 描画
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 背景
+    ctx.fillStyle = "#444";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // プレイヤー
+    ctx.fillStyle = holding ? "#0f0" : "#888";
+    ctx.fillRect(170, 350, 60, 60);
+
+    // 先生
+    ctx.fillStyle = teacherLook ? "#f00" : "#aaa";
+    ctx.fillRect(150, 50, 100, 80);
+
+    // テキスト
+    ctx.fillStyle = "white";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(teacherLook ? "見てる！！" : "見てない", 150, 150);
+}
+
+// スタート
+update();
+</script>
+
+</body>
+</html>
