@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>マリオ風 完成版</title>
+<title>しょぼんのパクリ（罠コース）</title>
 <style>
 body{margin:0;background:#111;text-align:center;color:#fff;}
 canvas{display:block;margin:auto;background:#87CEEB;}
@@ -24,17 +24,17 @@ onkeyup=e=>keys[e.key]=false;
 
 // ===== 定数 =====
 const TILE=32;
-const GRAV=0.5, MAX_FALL=12;
-const ACC=0.6, AIR=0.3, FRIC=0.85, MAX=5, JUMP=11;
+const GRAV=0.5,MAX_FALL=12;
+const ACC=0.6,AIR=0.3,FRIC=0.85,MAX=5,JUMP=11;
 
-// ===== マップ（1-1風）=====
+// ===== マップ =====
 const map=[
 "................................................",
 "................................................",
-"....................c...........................",
-"....................?...........................",
-"........c.......................................",
-"........###...............c......................",
+".................c..............................",
+".................?..............................",
+"................................................",
+"......###.................c.....................",
 "................................................",
 "####.............####.............###......##G..",
 "................................................",
@@ -44,24 +44,31 @@ const map=[
 // ===== 状態 =====
 let p,cam=0,score=0,state="play";
 let coins=[],blocks=[],items=[],enemies=[],goal={x:0,y:0};
+let fakeBlocks=[];
 
 // ===== 初期化 =====
 function build(){
- coins=[];blocks=[];items=[];
- enemies=[
-  {x:300,y:0,vx:1,vy:0},
-  {x:700,y:0,vx:1,vy:0}
- ];
+ coins=[];blocks=[];items=[];fakeBlocks=[];
+
+ enemies=[{x:300,y:0,vx:1,vy:0}];
 
  map.forEach((row,y)=>{
   [...row].forEach((ch,x)=>{
    let px=x*TILE,py=y*TILE;
 
-   if(ch==="c")coins.push({x:px+16,y:py+16,got:false});
+   if(ch==="c")coins.push({x:px+16,y:py+16,got:false,trap:false});
    if(ch==="?")blocks.push({x:px,y:py,used:false});
    if(ch==="G")goal={x:px,y:py};
+
+   // 偽物床（適当に配置）
+   if(y===9 && x===12){
+    fakeBlocks.push({x:px,y:py,active:true});
+   }
   });
  });
+
+ // トラップコイン
+ coins.push({x:450,y:200,got:false,trap:true});
 }
 
 function init(){
@@ -87,22 +94,14 @@ function solid(px,py){
 
 function isGrounded(p){
  return (
-  solid(p.x+2, p.y+p.h) ||
-  solid(p.x+p.w/2, p.y+p.h) ||
-  solid(p.x+p.w-2, p.y+p.h)
+  solid(p.x+2,p.y+p.h)||
+  solid(p.x+p.w/2,p.y+p.h)||
+  solid(p.x+p.w-2,p.y+p.h)
  );
 }
 
 // ===== 更新 =====
 function update(){
-
- // ゴール後
- if(state==="goal"){
-  p.vx=2;
-  p.x+=p.vx;
-  if(p.x>goal.x+100)p.vx=0;
-  return;
- }
 
  let acc=p.on?ACC:AIR;
 
@@ -132,8 +131,7 @@ function update(){
  // X
  p.x+=p.vx;
  if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
-  p.x-=p.vx;
-  p.vx=0;
+  p.x-=p.vx;p.vx=0;
  }
 
  // Y
@@ -155,78 +153,38 @@ function update(){
   }
  }
 
- // コイン
+ // ===== 偽物床 =====
+ fakeBlocks.forEach(b=>{
+  if(b.active &&
+     p.x<b.x+32 && p.x+p.w>b.x &&
+     p.y+p.h>b.y && p.y+p.h<b.y+10){
+    b.active=false;
+  }
+ });
+
+ // ===== コイン =====
  coins.forEach(c=>{
   if(!c.got && Math.abs(p.x-c.x)<20 && Math.abs(p.y-c.y)<20){
    c.got=true;
    score+=10;
-  }
- });
 
- // ブロック
- blocks.forEach(b=>{
-  if(!b.used && p.vy<0 &&
-     p.x<b.x+32 && p.x+p.w>b.x &&
-     p.y<b.y+32 && p.y+p.h>b.y){
-    b.used=true;
-    score+=20;
-    items.push({x:b.x,y:b.y-20,vx:1,vy:0});
-  }
- });
-
- // アイテム
- items.forEach(it=>{
-  it.vy+=0.5;
-  it.y+=it.vy;
-  it.x+=it.vx;
-
-  if(solid(it.x,it.y+20)){
-   it.y=Math.floor((it.y+20)/TILE)*TILE-20;
-   it.vy=0;
-  }
-
-  if(Math.abs(p.x-it.x)<20 && Math.abs(p.y-it.y)<20){
-   p.big=true;
-   score+=50;
-   it.x=-100;
-  }
- });
-
- // 敵
- enemies.forEach(e=>{
-  e.vy+=0.5;
-  e.y+=e.vy;
-  e.x+=e.vx;
-
-  if(solid(e.x,e.y+28)){
-   e.y=Math.floor((e.y+28)/TILE)*TILE-28;
-   e.vy=0;
-  }
-
-  if(Math.abs(p.x-e.x)<28 && Math.abs(p.y-e.y)<28){
-   if(p.vy>0){
-    p.vy=-8;
-    e.x=-100;
-    score+=50;
-   }else{
-    if(p.big){
-     p.big=false;
-    }else{
-     init();
-    }
+   // トラップ
+   if(c.trap){
+    p.vy=-15; // 強制ジャンプ（落とす）
    }
   }
  });
 
- // ゴール判定
+ // ===== ゴールトラップ =====
  if(
-  p.x < goal.x+32 &&
-  p.x+p.w > goal.x &&
-  p.y < goal.y+64 &&
-  p.y+p.h > goal.y
+  p.x<goal.x+32 &&
+  p.x+p.w>goal.x &&
+  p.y<goal.y+64 &&
+  p.y+p.h>goal.y
  ){
-  state="goal";
-  score+=100;
+  // 偽物：落とす
+  p.vy=-12;
+  p.x-=100;
  }
 
  cam+=(p.x-400-cam)*0.1;
@@ -237,23 +195,25 @@ function update(){
 // ===== 描画 =====
 function draw(){
 
- let g=ctx.createLinearGradient(0,0,0,400);
- g.addColorStop(0,"#87CEEB");
- g.addColorStop(1,"#fff");
- ctx.fillStyle=g;
+ ctx.fillStyle="#87CEEB";
  ctx.fillRect(0,0,800,400);
 
  // 地面
  map.forEach((row,y)=>{
   [...row].forEach((ch,x)=>{
    if(ch==="#"){
-    let sx=x*TILE-cam,sy=y*TILE;
     ctx.fillStyle="#7a5230";
-    ctx.fillRect(sx,sy,32,32);
-    ctx.fillStyle="#3cb043";
-    ctx.fillRect(sx,sy,32,6);
+    ctx.fillRect(x*TILE-cam,y*TILE,32,32);
    }
   });
+ });
+
+ // 偽物床
+ fakeBlocks.forEach(b=>{
+  if(b.active){
+   ctx.fillStyle="#999";
+   ctx.fillRect(b.x-cam,b.y,32,32);
+  }
  });
 
  // コイン
@@ -265,24 +225,6 @@ function draw(){
   ctx.fill();
  });
 
- // ブロック
- blocks.forEach(b=>{
-  ctx.fillStyle=b.used?"#aaa":"gold";
-  ctx.fillRect(b.x-cam,b.y,32,32);
- });
-
- // アイテム
- ctx.fillStyle="red";
- items.forEach(it=>{
-  ctx.fillRect(it.x-cam,it.y,20,20);
- });
-
- // 敵
- ctx.fillStyle="brown";
- enemies.forEach(e=>{
-  ctx.fillRect(e.x-cam,e.y,28,28);
- });
-
  // ゴール
  ctx.fillStyle="white";
  ctx.fillRect(goal.x-cam+12,goal.y-96,4,96);
@@ -290,8 +232,8 @@ function draw(){
  ctx.fillRect(goal.x-cam+16,goal.y-96,20,12);
 
  // プレイヤー
- ctx.fillStyle=p.big?"green":"blue";
- ctx.fillRect(p.x-cam,p.y,p.big?32:28,p.big?32:28);
+ ctx.fillStyle="blue";
+ ctx.fillRect(p.x-cam,p.y,28,28);
 }
 
 // ===== ループ =====
