@@ -2,233 +2,98 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>授業サバイバル - Ultimate</title>
+<title>Mini Kart</title>
 <style>
-body {
-    margin: 0;
-    background: #0a0a0a;
-    color: white;
-    text-align: center;
-    font-family: sans-serif;
-}
-canvas {
-    background: #1a1a1a;
-    display: block;
-    margin: 20px auto;
-    border: 3px solid white;
-}
-#ui { margin-top:10px; }
-button {
-    padding:10px 20px;
-    margin:5px;
-}
+body { margin:0; background:#111; color:white; text-align:center; }
+canvas { background:#222; display:block; margin:20px auto; }
 </style>
 </head>
 <body>
 
-<h1>授業サバイバル ULTIMATE</h1>
-<canvas id="game" width="420" height="520"></canvas>
-
-<div id="ui">
-<div id="menu">
-<button onclick="startGame()">スタート</button>
-</div>
-
-<div id="hud" style="display:none;">
-スコア: <span id="score">0</span>　
-コンボ: <span id="combo">0</span><br>
-緊張: <span id="danger">0</span>%
-</div>
-
-<h3>ランキング</h3>
-<ol id="ranking"></ol>
-</div>
+<h1>Mini Kart</h1>
+<canvas id="game" width="400" height="500"></canvas>
+<p>← → で操作</p>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// ===== 状態 =====
-let gameState = "menu";
-let holding = false;
-let teacherState = "idle";
-let timer = 0;
+let playerX = 200;
+let speed = 5;
+let obstacles = [];
 let score = 0;
-let combo = 0;
-let danger = 0;
-let speed = 1;
+let gameOver = false;
 
-// ===== 音 =====
-const sound = (f,t=0.1)=>{
-    let a=new (window.AudioContext||window.webkitAudioContext)();
-    let o=a.createOscillator();
-    let g=a.createGain();
-    o.connect(g); g.connect(a.destination);
-    o.frequency.value=f;
-    o.start();
-    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+t);
-    setTimeout(()=>a.close(),t*1000);
-};
-
-// ===== 入力 =====
-document.addEventListener("keydown",e=>{
-if(e.code==="Space") holding=true;
-});
-document.addEventListener("keyup",e=>{
-if(e.code==="Space") holding=false;
+// 入力
+document.addEventListener("keydown", e=>{
+    if(e.key==="ArrowLeft") playerX -= 20;
+    if(e.key==="ArrowRight") playerX += 20;
 });
 
-// ===== ランキング =====
-let ranking = JSON.parse(localStorage.getItem("rank")||"[]");
-
-function saveScore(s){
-ranking.push(s);
-ranking.sort((a,b)=>b-a);
-ranking=ranking.slice(0,10);
-localStorage.setItem("rank",JSON.stringify(ranking));
-drawRanking();
+// 障害物生成
+function spawn(){
+    obstacles.push({
+        x: Math.random()*360,
+        y: -20,
+        type: Math.random()<0.2 ? "boost":"rock"
+    });
 }
 
-function drawRanking(){
-let el=document.getElementById("ranking");
-el.innerHTML="";
-ranking.forEach(s=>{
-let li=document.createElement("li");
-li.textContent=s;
-el.appendChild(li);
-});
-}
-drawRanking();
-
-// ===== ゲーム開始 =====
-function startGame(){
-gameState="play";
-document.getElementById("menu").style.display="none";
-document.getElementById("hud").style.display="block";
-
-holding=false;
-teacherState="idle";
-timer=0;
-score=0;
-combo=0;
-danger=0;
-speed=1;
-}
-
-// ===== メインループ =====
+// 更新
 function update(){
-if(gameState!=="play"){
-drawMenu();
-requestAnimationFrame(update);
-return;
+if(gameOver) return;
+
+if(Math.random()<0.03) spawn();
+
+obstacles.forEach(o=>{
+    o.y += speed;
+});
+
+// 衝突
+for(let o of obstacles){
+    if(o.y>400 && Math.abs(o.x-playerX)<30){
+        if(o.type==="rock"){
+            gameOver=true;
+            alert("クラッシュ！スコア:"+score);
+            location.reload();
+        } else {
+            speed+=1;
+            score+=50;
+        }
+    }
 }
 
-timer++;
-speed+=0.0005;
-
-// ===== 先生AI =====
-if(timer % Math.floor(80/speed)===0){
-let r=Math.random();
-
-if(r<0.4) teacherState="look";
-else if(r<0.6) teacherState="fake";
-else if(r<0.8) teacherState="spam";
-else teacherState="idle";
-}
-
-// spam状態
-if(teacherState==="spam" && Math.random()<0.1){
-teacherState="look";
-}
-
-// ===== ゲームロジック =====
-if(holding){
-if(teacherState==="look"){
-danger+=2;
-combo=0;
-}else{
-score+=1+combo*0.2;
-combo++;
-}
-}else{
-danger-=1;
-combo=0;
-}
-
-danger=Math.max(0,Math.min(100,danger));
-
-// ===== ゲームオーバー =====
-if(danger>=100){
-sound(120,0.4);
-saveScore(Math.floor(score));
-gameState="over";
-}
-
-// ===== 描画 =====
-drawGame();
-
-document.getElementById("score").textContent=Math.floor(score);
-document.getElementById("combo").textContent=combo;
-document.getElementById("danger").textContent=danger;
+score++;
+draw();
 
 requestAnimationFrame(update);
 }
 
-// ===== 描画 =====
-function drawGame(){
-ctx.clearRect(0,0,420,520);
+// 描画
+function draw(){
+ctx.clearRect(0,0,400,500);
 
-// 背景
-ctx.fillStyle="#222";
-ctx.fillRect(0,0,420,520);
+// 道
+ctx.fillStyle="#555";
+ctx.fillRect(100,0,200,500);
 
 // プレイヤー
-ctx.fillStyle=holding?"#00ffcc":"#555";
-ctx.fillRect(180,380,60,80);
+ctx.fillStyle="cyan";
+ctx.fillRect(playerX,420,30,50);
 
-// 先生
-if(teacherState==="look") ctx.fillStyle="#ff3333";
-else if(teacherState==="fake") ctx.fillStyle="#ffaa00";
-else if(teacherState==="spam") ctx.fillStyle="#ff00ff";
-else ctx.fillStyle="#aaa";
+// 障害物
+obstacles.forEach(o=>{
+    ctx.fillStyle = o.type==="rock"?"red":"yellow";
+    ctx.fillRect(o.x,o.y,30,30);
+});
 
-ctx.fillRect(160,80,100,100);
-
-// テキスト
+// スコア
 ctx.fillStyle="white";
-ctx.font="18px sans-serif";
-
-let txt="";
-if(teacherState==="look") txt="ガチ視線";
-else if(teacherState==="fake") txt="フェイント";
-else if(teacherState==="spam") txt="連続監視";
-else txt="油断中";
-
-ctx.fillText(txt,150,220);
-
-// 危険ゲージ
-ctx.fillStyle="red";
-ctx.fillRect(10,10,danger*3,10);
+ctx.fillText("Score:"+score,10,20);
 }
 
-// ===== メニュー =====
-function drawMenu(){
-ctx.clearRect(0,0,420,520);
-ctx.fillStyle="white";
-ctx.font="24px sans-serif";
-ctx.fillText("スペースキーで操作",90,250);
-}
-
-// ===== 終了画面 =====
-setInterval(()=>{
-if(gameState==="over"){
-alert("終了 スコア:"+Math.floor(score));
-location.reload();
-}
-},500);
-
-// ===== 開始 =====
 update();
 </script>
+
 </body>
 </html>
