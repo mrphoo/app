@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>しょぼんのパクリ v2</title>
+<title>しょぼんのパクリ（マリオ化）</title>
 <style>
 body{margin:0;background:#111;text-align:center;color:#fff;}
 canvas{display:block;margin:auto;background:#87CEEB;}
@@ -10,157 +10,210 @@ canvas{display:block;margin:auto;background:#87CEEB;}
 </head>
 <body>
 
-<canvas id="game" width="800" height="400"></canvas>
+<div id="ui"></div>
+<canvas id="c" width="800" height="400"></canvas>
 
 <script>
-const c=game,ctx=c.getContext("2d");
+const ctx=c.getContext("2d");
+const ui=document.getElementById("ui");
 
+// ===== 入力 =====
 let keys={},prev={};
 onkeydown=e=>keys[e.key]=true;
 onkeyup=e=>keys[e.key]=false;
 
-let player,cam=0;
+// ===== 定数 =====
+const GRAV=0.5,MAX_FALL=12;
+const ACC=0.6,AIR_ACC=0.3;
+const MAX=5,FRICTION=0.8;
+const JUMP=11;
 
-function init(){
- player={
-  x:50,y:300,
-  vx:0,vy:0,
-  w:32,h:32,
-  on:false,
-  jump:0,
-  jumpHold:0
- };
+// ===== プレイヤー =====
+let p={x:50,y:300,w:32,h:32,vx:0,vy:0,on:false,coyote:0,buffer:0};
+let cam=0,score=0;
+
+// ===== タイル =====
+const map=[
+"............................",
+"............................",
+"..............c.............",
+"......###.............###...",
+"....................c.......",
+"####..............##########"
+];
+
+const TILE=32;
+
+// ===== エンティティ =====
+let coins=[];
+let enemies=[{x:500,y:318,type:"goomba"},
+             {x:700,y:318,type:"koopa",state:"walk",vx:2}];
+
+// ===== 初期化 =====
+function build(){
+ coins=[];
+ map.forEach((row,y)=>{
+  [...row].forEach((ch,x)=>{
+   if(ch==="c") coins.push({x:x*TILE+6,y:y*TILE+6,got:false});
+  });
+ });
+}
+build();
+
+// ===== 衝突 =====
+function solid(x,y){
+ let tx=Math.floor(x/TILE),ty=Math.floor(y/TILE);
+ if(!map[ty])return false;
+ return map[ty][tx]==="#";
 }
 
-const level={
- ground:350,
- platforms:[
-  {x:300,y:300,w:120},
-  {x:500,y:260,w:120},
-  {x:700,y:220,w:120}
- ],
- enemies:[
-  {x:600,y:318,dir:1}
- ],
- goal:{x:1000,y:280}
-};
-
-function hit(a,b){
- return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+10&&a.y+a.h>b.y;
-}
-
+// ===== 更新 =====
 function update(){
 
- // --- 移動（加速あり）
- if(keys["ArrowRight"]) player.vx+=0.5;
- if(keys["ArrowLeft"]) player.vx-=0.5;
+ // 入力
+ let acc=p.on?ACC:AIR_ACC;
+ if(keys["ArrowRight"])p.vx+=acc;
+ if(keys["ArrowLeft"])p.vx-=acc;
+ p.vx*=FRICTION;
+ if(p.vx>MAX)p.vx=MAX;
+ if(p.vx<-MAX)p.vx=-MAX;
 
- player.vx*=0.85; // 摩擦
- if(Math.abs(player.vx)<0.1) player.vx=0;
+ let jump=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
+ if(jump)p.buffer=6;
 
- player.x+=player.vx;
+ // 重力
+ p.vy+=GRAV;
+ if(p.vy>MAX_FALL)p.vy=MAX_FALL;
 
- // --- ジャンプ
- let press=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
+ if(p.coyote>0)p.coyote--;
 
- if(press && player.jump<2){
-  player.vy=-10;
-  player.jump++;
-  player.jumpHold=10;
+ // ジャンプ
+ if(p.buffer>0 && p.coyote>0){
+  p.vy=-JUMP;
+  p.buffer=0;
+  p.coyote=0;
+ }
+ p.buffer--;
+
+ // ジャンプ離しで落下強化
+ if(!keys[" "]&&!keys["ArrowUp"] && p.vy<0){
+  p.vy+=0.5;
  }
 
- if(keys[" "]||keys["ArrowUp"]){
-  if(player.jumpHold>0){
-   player.vy-=0.3;
-   player.jumpHold--;
-  }
+ // X移動
+ p.x+=p.vx;
+ if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
+  p.x-=p.vx;
+  p.vx=0;
  }
 
- // --- 重力
- player.vy+=0.5;
- player.y+=player.vy;
- player.on=false;
+ // Y移動
+ p.y+=p.vy;
+ p.on=false;
 
- // 地面
- if(player.y+32>level.ground){
-  player.y=level.ground-32;
-  player.vy=0;
-  player.on=true;
-  player.jump=0;
+ if(solid(p.x,p.y+p.h)||solid(p.x+p.w,p.y+p.h)){
+  p.y=Math.floor((p.y+p.h)/TILE)*TILE-p.h;
+  p.vy=0;
+  p.on=true;
+  p.coyote=6;
  }
 
- // 足場
- level.platforms.forEach(p=>{
-  if(keys["ArrowDown"]) return;
-  if(hit(player,p) && player.vy>0){
-   player.y=p.y-32;
-   player.vy=0;
-   player.on=true;
-   player.jump=0;
+ if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
+  p.y+=2;
+  p.vy=0;
+ }
+
+ // コイン
+ coins.forEach(c=>{
+  if(!c.got && Math.abs(p.x-c.x)<20 && Math.abs(p.y-c.y)<20){
+   c.got=true;
+   score+=10;
   }
  });
 
  // 敵
- level.enemies.forEach(e=>{
-  e.x+=e.dir*2;
-  if(hit(player,{...e,w:32})){
-   if(player.vy>0){
-    player.vy=-8;
+ enemies.forEach(e=>{
+  if(e.type==="goomba"){
+   e.x+=1;
+  }
+
+  if(e.type==="koopa"){
+   if(e.state==="walk") e.x+=e.vx;
+   if(e.state==="shell") e.x+=e.vx;
+  }
+
+  // 当たり
+  if(Math.abs(p.x-e.x)<30 && Math.abs(p.y-e.y)<30){
+   if(p.vy>0){
+    p.vy=-8;
+
+    if(e.type==="goomba"){
+     e.x=-100;
+    }
+
+    if(e.type==="koopa"){
+     if(e.state==="walk"){
+      e.state="shell";
+      e.vx=0;
+     }else{
+      e.vx=6*(p.x<e.x?1:-1);
+     }
+    }
+
    }else{
-    init();
+    p.x=50;p.y=300;p.vx=0;p.vy=0;
    }
   }
  });
 
- // ゴール
- if(hit(player,{...level.goal,w:10})){
-  init();
- }
-
- // カメラ（なめらか）
- cam+=(player.x-400-cam)*0.1;
+ cam+=(p.x-400-cam)*0.1;
 
  prev={...keys};
+ ui.textContent="SCORE "+score;
 }
 
+// ===== 描画 =====
 function draw(){
 
  ctx.fillStyle="#87CEEB";
  ctx.fillRect(0,0,800,400);
 
- ctx.fillStyle="#654321";
- ctx.fillRect(0,350,800,50);
-
- // 足場
- ctx.fillStyle="#888";
- level.platforms.forEach(p=>{
-  ctx.fillRect(p.x-cam,p.y,p.w,10);
+ // タイル
+ map.forEach((row,y)=>{
+  [...row].forEach((ch,x)=>{
+   if(ch==="#"){
+    ctx.fillStyle="#5c3a21";
+    ctx.fillRect(x*TILE-cam,y*TILE,TILE,TILE);
+   }
+  });
  });
 
- // 敵
- ctx.fillStyle="brown";
- level.enemies.forEach(e=>{
+ // コイン
+ coins.forEach(c=>{
+  if(c.got)return;
+  ctx.fillStyle="yellow";
   ctx.beginPath();
-  ctx.arc(e.x-cam+16,320,16,0,Math.PI*2);
+  ctx.arc(c.x-cam,c.y,8,0,Math.PI*2);
   ctx.fill();
  });
 
- // ゴール
- ctx.fillStyle="red";
- ctx.fillRect(level.goal.x-cam,280,10,70);
+ // 敵
+ enemies.forEach(e=>{
+  ctx.fillStyle=e.type==="goomba"?"brown":"green";
+  ctx.fillRect(e.x-cam,e.y,32,32);
+ });
 
  // プレイヤー
  ctx.fillStyle="blue";
- ctx.fillRect(player.x-cam,player.y,32,32);
+ ctx.fillRect(p.x-cam,p.y,32,32);
 }
 
+// ===== ループ =====
 function loop(){
  update();
  draw();
  requestAnimationFrame(loop);
 }
-
-init();
 loop();
 </script>
 </body>
