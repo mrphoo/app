@@ -2,112 +2,86 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>しょぼんのパクリ（マリオ化）</title>
+<title>しょぼんのパクリ（改善版）</title>
 <style>
-body{margin:0;background:#111;text-align:center;color:#fff;}
-canvas{display:block;margin:auto;background:#87CEEB;}
+body{margin:0;background:#222;text-align:center;}
+canvas{display:block;margin:auto;}
 </style>
 </head>
 <body>
 
-<div id="ui"></div>
 <canvas id="c" width="800" height="400"></canvas>
 
 <script>
 const ctx=c.getContext("2d");
-const ui=document.getElementById("ui");
 
-// ===== 入力 =====
 let keys={},prev={};
 onkeydown=e=>keys[e.key]=true;
 onkeyup=e=>keys[e.key]=false;
 
+// ===== プレイヤー =====
+let p={x:100,y:200,w:28,h:28,vx:0,vy:0,on:false,coyote:0,buf:0};
+let cam=0;
+
 // ===== 定数 =====
 const GRAV=0.5,MAX_FALL=12;
-const ACC=0.6,AIR_ACC=0.3;
-const MAX=5,FRICTION=0.8;
-const JUMP=11;
+const ACC=0.6,AIR=0.3,FRIC=0.8,MAX=5,JUMP=11;
 
-// ===== プレイヤー =====
-let p={x:50,y:300,w:32,h:32,vx:0,vy:0,on:false,coyote:0,buffer:0};
-let cam=0,score=0;
-
-// ===== タイル =====
+// ===== マップ =====
+const TILE=32;
 const map=[
 "............................",
 "............................",
-"..............c.............",
-"......###.............###...",
-"....................c.......",
-"####..............##########"
+"............................",
+"..........###...............",
+"......................###...",
+"############################"
 ];
 
-const TILE=32;
-
-// ===== エンティティ =====
-let coins=[];
-let enemies=[{x:500,y:318,type:"goomba"},
-             {x:700,y:318,type:"koopa",state:"walk",vx:2}];
-
-// ===== 初期化 =====
-function build(){
- coins=[];
- map.forEach((row,y)=>{
-  [...row].forEach((ch,x)=>{
-   if(ch==="c") coins.push({x:x*TILE+6,y:y*TILE+6,got:false});
-  });
- });
-}
-build();
-
-// ===== 衝突 =====
-function solid(x,y){
- let tx=Math.floor(x/TILE),ty=Math.floor(y/TILE);
- if(!map[ty])return false;
+// ===== 安定した判定 =====
+function solid(px,py){
+ let tx=Math.floor(px/TILE);
+ let ty=Math.floor(py/TILE);
+ if(ty<0||ty>=map.length)return false;
+ if(tx<0||tx>=map[0].length)return false;
  return map[ty][tx]==="#";
 }
 
 // ===== 更新 =====
 function update(){
 
- // 入力
- let acc=p.on?ACC:AIR_ACC;
+ let acc=p.on?ACC:AIR;
  if(keys["ArrowRight"])p.vx+=acc;
  if(keys["ArrowLeft"])p.vx-=acc;
- p.vx*=FRICTION;
+
+ p.vx*=FRIC;
  if(p.vx>MAX)p.vx=MAX;
  if(p.vx<-MAX)p.vx=-MAX;
 
  let jump=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
- if(jump)p.buffer=6;
+ if(jump)p.buf=6;
 
- // 重力
  p.vy+=GRAV;
  if(p.vy>MAX_FALL)p.vy=MAX_FALL;
 
  if(p.coyote>0)p.coyote--;
 
- // ジャンプ
- if(p.buffer>0 && p.coyote>0){
+ if(p.buf>0 && p.coyote>0){
   p.vy=-JUMP;
-  p.buffer=0;
+  p.buf=0;
   p.coyote=0;
  }
- p.buffer--;
+ p.buf--;
 
- // ジャンプ離しで落下強化
- if(!keys[" "]&&!keys["ArrowUp"] && p.vy<0){
-  p.vy+=0.5;
- }
+ if(!keys[" "]&&!keys["ArrowUp"] && p.vy<0)p.vy+=0.5;
 
- // X移動
+ // X
  p.x+=p.vx;
  if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
-  p.x-=p.vx;
-  p.vx=0;
+  p.x-=p.vx;p.vx=0;
  }
 
- // Y移動
+ // Y
  p.y+=p.vy;
  p.on=false;
 
@@ -119,93 +93,59 @@ function update(){
  }
 
  if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
-  p.y+=2;
-  p.vy=0;
+  p.y+=2;p.vy=0;
  }
-
- // コイン
- coins.forEach(c=>{
-  if(!c.got && Math.abs(p.x-c.x)<20 && Math.abs(p.y-c.y)<20){
-   c.got=true;
-   score+=10;
-  }
- });
-
- // 敵
- enemies.forEach(e=>{
-  if(e.type==="goomba"){
-   e.x+=1;
-  }
-
-  if(e.type==="koopa"){
-   if(e.state==="walk") e.x+=e.vx;
-   if(e.state==="shell") e.x+=e.vx;
-  }
-
-  // 当たり
-  if(Math.abs(p.x-e.x)<30 && Math.abs(p.y-e.y)<30){
-   if(p.vy>0){
-    p.vy=-8;
-
-    if(e.type==="goomba"){
-     e.x=-100;
-    }
-
-    if(e.type==="koopa"){
-     if(e.state==="walk"){
-      e.state="shell";
-      e.vx=0;
-     }else{
-      e.vx=6*(p.x<e.x?1:-1);
-     }
-    }
-
-   }else{
-    p.x=50;p.y=300;p.vx=0;p.vy=0;
-   }
-  }
- });
 
  cam+=(p.x-400-cam)*0.1;
 
  prev={...keys};
- ui.textContent="SCORE "+score;
 }
 
 // ===== 描画 =====
 function draw(){
 
- ctx.fillStyle="#87CEEB";
+ // 空グラデ
+ let g=ctx.createLinearGradient(0,0,0,400);
+ g.addColorStop(0,"#87CEEB");
+ g.addColorStop(1,"#e0f7ff");
+ ctx.fillStyle=g;
  ctx.fillRect(0,0,800,400);
 
- // タイル
+ // 雲
+ ctx.fillStyle="white";
+ ctx.beginPath();
+ ctx.arc(150,80,20,0,6.28);
+ ctx.arc(180,80,25,0,6.28);
+ ctx.arc(210,80,20,0,6.28);
+ ctx.fill();
+
+ // 地面
  map.forEach((row,y)=>{
   [...row].forEach((ch,x)=>{
    if(ch==="#"){
-    ctx.fillStyle="#5c3a21";
-    ctx.fillRect(x*TILE-cam,y*TILE,TILE,TILE);
+    let sx=x*TILE-cam,sy=y*TILE;
+
+    // 土
+    ctx.fillStyle="#7a5230";
+    ctx.fillRect(sx,sy,TILE,TILE);
+
+    // 芝
+    ctx.fillStyle="#3cb043";
+    ctx.fillRect(sx,sy,32,8);
+
+    // 縁
+    ctx.strokeStyle="#000";
+    ctx.strokeRect(sx,sy,TILE,TILE);
    }
   });
  });
 
- // コイン
- coins.forEach(c=>{
-  if(c.got)return;
-  ctx.fillStyle="yellow";
-  ctx.beginPath();
-  ctx.arc(c.x-cam,c.y,8,0,Math.PI*2);
-  ctx.fill();
- });
-
- // 敵
- enemies.forEach(e=>{
-  ctx.fillStyle=e.type==="goomba"?"brown":"green";
-  ctx.fillRect(e.x-cam,e.y,32,32);
- });
-
- // プレイヤー
+ // プレイヤー（簡易スプライト）
  ctx.fillStyle="blue";
- ctx.fillRect(p.x-cam,p.y,32,32);
+ ctx.fillRect(p.x-cam,p.y,28,28);
+ ctx.fillStyle="white";
+ ctx.fillRect(p.x-cam+6,p.y+6,6,6);
+
 }
 
 // ===== ループ =====
@@ -216,5 +156,6 @@ function loop(){
 }
 loop();
 </script>
+
 </body>
 </html>
