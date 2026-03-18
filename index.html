@@ -4,63 +4,68 @@
 <meta charset="UTF-8">
 <title>しょぼんのパクリ</title>
 <style>
-body{margin:0;background:#222;color:#fff;text-align:center;font-family:sans-serif;}
+body{margin:0;background:#222;color:#fff;text-align:center;}
 canvas{display:block;margin:20px auto;border:2px solid #000;}
 </style>
 </head>
 <body>
 
 <h2>しょぼんのパクリ</h2>
-<p>← → 移動 / ↑ or スペース ジャンプ（2段ジャンプ可）</p>
+<p>← → 移動 / ↑ or スペース ジャンプ / ↓ で降りる</p>
 <canvas id="game" width="800" height="400"></canvas>
 
 <script>
 const c=document.getElementById("game");
 const ctx=c.getContext("2d");
 
-let keys={};
+let keys={},prevKeys={};
 document.addEventListener("keydown",e=>keys[e.key]=true);
 document.addEventListener("keyup",e=>keys[e.key]=false);
 
 // ===== プレイヤー =====
 let player={
- x:50,y:0,w:30,h:30,
+ x:50,y:320,w:30,h:30,
  vx:0,vy:0,onGround:false,
  jumpCount:0,maxJump:2,
- big:false,frame:0
+ big:false,frame:0,inv:0
 };
 
 let gravity=0.5;
 let cameraX=0;
 let coins=0;
 
-// ===== ステージ（分岐あり）=====
-let level={
- width:2200,
- platforms:[
-  {x:0,y:350,w:2200,h:50},
+// ===== ステージ生成（毎回リセット）=====
+function createLevel(){
+ return {
+  width:1800,
+  platforms:[
+   {x:0,y:350,w:1800,h:50},
 
-  // 下ルート
-  {x:300,y:300,w:120,h:20},
-  {x:600,y:300,w:120,h:20},
+   {x:300,y:300,w:80,h:20},
+   {x:380,y:280,w:80,h:20},
+   {x:460,y:260,w:80,h:20},
 
-  // 上ルート
-  {x:300,y:200,w:120,h:20},
-  {x:600,y:160,w:120,h:20},
-  {x:900,y:120,w:120,h:20},
+   {x:700,y:300,w:100,h:20},
+   {x:900,y:260,w:100,h:20},
 
-  {x:1300,y:260,w:150,h:20}
- ],
- enemies:[
-  {x:700,y:320,w:30,h:30,dir:1}
- ],
- blocks:[
-  {x:500,y:260,type:"coin",used:false},
-  {x:900,y:80,type:"mushroom",used:false}
- ],
- items:[],
- goal:{x:2000,y:300,w:40,h:50}
-};
+   {x:1200,y:300,w:80,h:20},
+   {x:1280,y:280,w:80,h:20},
+   {x:1360,y:260,w:80,h:20}
+  ],
+  enemies:[
+   {x:500,y:320,w:30,h:30,dir:1,frame:0},
+   {x:1000,y:240,w:30,h:30,dir:-1,frame:0}
+  ],
+  blocks:[
+   {x:750,y:220,type:"coin",used:false},
+   {x:950,y:180,type:"mushroom",used:false}
+  ],
+  items:[],
+  goal:{x:1700,y:300,w:40,h:50}
+ };
+}
+
+let level=createLevel();
 
 // ===== 当たり判定 =====
 function hit(a,b){
@@ -69,16 +74,21 @@ function hit(a,b){
 
 // ===== リセット =====
 function reset(){
- player.x=50;player.y=0;
- player.vx=0;player.vy=0;
+ player.x=50; player.y=320;
+ player.vx=0; player.vy=0;
  player.jumpCount=0;
  player.big=false;
- player.w=30;player.h=30;
+ player.w=30; player.h=30;
+ player.inv=0;
  keys={};
+ level=createLevel(); // ←完全復活
 }
 
 // ===== 更新 =====
 function update(){
+
+ // 入力差分（押した瞬間）
+ let jumpPressed = (keys[" "]&&!prevKeys[" "]) || (keys["ArrowUp"]&&!prevKeys["ArrowUp"]);
 
  // 移動
  player.vx=0;
@@ -87,10 +97,9 @@ function update(){
  player.x+=player.vx;
 
  // ジャンプ（二段）
- if((keys[" "]||keys["ArrowUp"]) && player.jumpCount<player.maxJump){
+ if(jumpPressed && player.jumpCount<player.maxJump){
   player.vy=-10;
   player.jumpCount++;
-  keys[" "]=false; keys["ArrowUp"]=false;
  }
 
  // 重力
@@ -102,6 +111,7 @@ function update(){
  level.platforms.forEach(p=>{
   if(player.x<p.x+p.w && player.x+player.w>p.x &&
      player.y+player.h>p.y && player.y<p.y+20){
+
     if(player.vy>0){
       player.y=p.y-player.h;
       player.vy=0;
@@ -111,21 +121,18 @@ function update(){
   }
  });
 
- // ブロック（下から叩く）
+ // ↓キーで降りる
+ if(keys["ArrowDown"] && player.onGround){
+  player.y+=5;
+ }
+
+ // ブロック
  level.blocks.forEach(b=>{
-  if(!b.used &&
-     player.x<b.x+30 && player.x+player.w>b.x &&
-     player.y<b.y+30 && player.y+player.h>b.y){
-
-    if(player.vy<0){ // 下からヒット
-      b.used=true;
-
-      if(b.type==="coin"){
-        coins++;
-      }
-      if(b.type==="mushroom"){
-        level.items.push({x:b.x,y:b.y-30,type:"mush"});
-      }
+  if(!b.used && hit(player,b) && player.vy<0){
+    b.used=true;
+    if(b.type==="coin") coins++;
+    if(b.type==="mushroom"){
+      level.items.push({x:b.x,y:b.y-30,type:"mush"});
     }
   }
  });
@@ -134,10 +141,8 @@ function update(){
  level.items.forEach(it=>{
   it.y+=1;
   if(hit(player,it)){
-    if(it.type==="mush"){
-      player.big=true;
-      player.w=40; player.h=40;
-    }
+    player.big=true;
+    player.w=40; player.h=40;
     it.x=-100;
   }
  });
@@ -145,9 +150,11 @@ function update(){
  // 敵
  level.enemies.forEach(e=>{
   e.x+=e.dir*2;
-  if(e.x<0||e.x>level.width-30)e.dir*=-1;
+  e.frame++;
 
-  if(hit(player,e)){
+  if(e.x<0||e.x>level.width-30) e.dir*=-1;
+
+  if(hit(player,e) && player.inv<=0){
     if(player.vy>0){
       e.x=-100;
       player.vy=-8;
@@ -155,12 +162,15 @@ function update(){
       if(player.big){
         player.big=false;
         player.w=30; player.h=30;
+        player.inv=60;
       }else{
         reset();
       }
     }
   }
  });
+
+ if(player.inv>0) player.inv--;
 
  // カメラ
  cameraX=player.x-400;
@@ -169,10 +179,11 @@ function update(){
 
  // ゴール
  if(hit(player,level.goal)){
-  alert("クリア！ コイン:"+coins);
-  coins=0;
+  alert("クリア！");
   reset();
  }
+
+ prevKeys={...keys};
 }
 
 // ===== 描画 =====
@@ -185,46 +196,48 @@ function draw(){
  ctx.fillStyle=g;
  ctx.fillRect(0,0,800,400);
 
+ // 雲
+ ctx.fillStyle="white";
+ for(let i=0;i<5;i++){
+  let x=(i*300-cameraX*0.3)%1200;
+  ctx.beginPath();
+  ctx.arc(x,80,20,0,Math.PI*2);
+  ctx.arc(x+20,80,25,0,Math.PI*2);
+  ctx.arc(x+40,80,20,0,Math.PI*2);
+  ctx.fill();
+ }
+
  // 足場
  level.platforms.forEach(p=>{
   ctx.fillStyle="#8B4513";
   ctx.fillRect(p.x-cameraX,p.y,p.w,p.h);
  });
 
- // ブロック（？）
+ // ブロック
  level.blocks.forEach(b=>{
   ctx.fillStyle=b.used?"#999":"gold";
   ctx.fillRect(b.x-cameraX,b.y,30,30);
  });
 
- // アイテム
- ctx.fillStyle="green";
- level.items.forEach(it=>{
-  ctx.fillRect(it.x-cameraX,it.y,20,20);
- });
-
- // 敵
+ // 敵（アニメ）
  level.enemies.forEach(e=>{
+  let bounce=Math.sin(e.frame*0.2)*3;
   ctx.fillStyle="#8B4513";
   ctx.beginPath();
-  ctx.arc(e.x-cameraX+15,e.y+15,15,0,Math.PI*2);
+  ctx.arc(e.x-cameraX+15,e.y+15+bounce,15,0,Math.PI*2);
   ctx.fill();
  });
 
- // ゴール
- ctx.fillStyle="red";
- ctx.fillRect(level.goal.x-cameraX,level.goal.y,30,50);
-
  // プレイヤー
- ctx.fillStyle="black";
+ ctx.fillStyle = player.inv>0 ? "rgba(0,0,0,0.5)" : "black";
  ctx.fillRect(player.x-cameraX,player.y,player.w,player.h);
 
  // UI
  ctx.fillStyle="white";
- ctx.fillText("COIN: "+coins,10,20);
+ ctx.fillText("COIN:"+coins,10,20);
 }
 
-// ===== ループ =====
+// ループ
 function loop(){
  update();
  draw();
