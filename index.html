@@ -1,1 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Trap Action Game</title>
+<style>
+  body {
+    margin: 0;
+    background: #222;
+    color: white;
+    font-family: sans-serif;
+    text-align: center;
+  }
+  canvas {
+    background: #87ceeb;
+    display: block;
+    margin: 20px auto;
+    border: 2px solid #000;
+  }
+</style>
+</head>
+<body>
 
+<h2>Trap Action（しょぼん風）</h2>
+<p>← → 移動 / スペース ジャンプ</p>
+<canvas id="game" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// ===== プレイヤー =====
+let player = {
+  x: 50,
+  y: 300,
+  w: 30,
+  h: 30,
+  vx: 0,
+  vy: 0,
+  onGround: false
+};
+
+const gravity = 0.5;
+
+// ===== 入力 =====
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// ===== ステージ =====
+let groundY = 330;
+
+let traps = [
+  { x: 250, y: 330, w: 50, h: 70, type: "fall", active: false },
+  { x: 450, y: 300, w: 30, h: 30, type: "spike", hidden: true },
+  { x: 650, y: 330, w: 100, h: 70, type: "fake" }
+];
+
+let goal = { x: 750, y: 280, w: 30, h: 50 };
+
+// ===== リセット =====
+function reset() {
+  player.x = 50;
+  player.y = 300;
+  player.vx = 0;
+  player.vy = 0;
+}
+
+// ===== 当たり判定 =====
+function isColliding(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+// ===== 更新 =====
+function update() {
+  // 移動
+  player.vx = 0;
+  if (keys["ArrowRight"]) player.vx = 3;
+  if (keys["ArrowLeft"]) player.vx = -3;
+
+  player.x += player.vx;
+
+  // ジャンプ
+  if (keys[" "] && player.onGround) {
+    player.vy = -10;
+    player.onGround = false;
+  }
+
+  // 重力
+  player.vy += gravity;
+  player.y += player.vy;
+
+  // 地面
+  if (player.y + player.h >= groundY) {
+    player.y = groundY - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // ===== トラップ処理 =====
+  traps.forEach(t => {
+    // 落ちる床
+    if (t.type === "fall") {
+      if (isColliding(player, t)) {
+        t.active = true;
+      }
+      if (t.active) {
+        t.y += 4;
+      }
+    }
+
+    // 隠しトゲ（近づくと出現）
+    if (t.type === "spike") {
+      if (player.x > 400) {
+        t.hidden = false;
+      }
+      if (!t.hidden && isColliding(player, t)) {
+        reset();
+      }
+    }
+
+    // 偽物の床（踏むとすり抜け）
+    if (t.type === "fake") {
+      if (isColliding(player, t)) {
+        player.y += 5; // すり抜け
+      }
+    }
+  });
+
+  // 落下死
+  if (player.y > canvas.height) {
+    reset();
+  }
+
+  // ゴール
+  if (isColliding(player, goal)) {
+    alert("クリア！");
+    reset();
+  }
+}
+
+// ===== 描画 =====
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 地面
+  ctx.fillStyle = "green";
+  ctx.fillRect(0, groundY, 800, 70);
+
+  // プレイヤー
+  ctx.fillStyle = "black";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // トラップ
+  traps.forEach(t => {
+    if (t.type === "spike" && t.hidden) return;
+    ctx.fillStyle = "red";
+    ctx.fillRect(t.x, t.y, t.w, t.h);
+  });
+
+  // ゴール
+  ctx.fillStyle = "gold";
+  ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+}
+
+// ===== ループ =====
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
