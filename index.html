@@ -2,119 +2,233 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>授業サバイバル</title>
+<title>授業サバイバル - Ultimate</title>
 <style>
-    body {
-        margin: 0;
-        font-family: sans-serif;
-        background: #222;
-        color: white;
-        text-align: center;
-    }
-    canvas {
-        background: #333;
-        display: block;
-        margin: 20px auto;
-        border: 2px solid #fff;
-    }
-    #info {
-        margin-top: 10px;
-    }
+body {
+    margin: 0;
+    background: #0a0a0a;
+    color: white;
+    text-align: center;
+    font-family: sans-serif;
+}
+canvas {
+    background: #1a1a1a;
+    display: block;
+    margin: 20px auto;
+    border: 3px solid white;
+}
+#ui { margin-top:10px; }
+button {
+    padding:10px 20px;
+    margin:5px;
+}
 </style>
 </head>
 <body>
 
-<h1>授業サバイバル</h1>
-<p>スペースキーでスマホ操作 / 離すと隠す</p>
-<canvas id="game" width="400" height="500"></canvas>
-<div id="info">
-    スコア: <span id="score">0</span><br>
-    ハイスコア: <span id="highscore">0</span>
+<h1>授業サバイバル ULTIMATE</h1>
+<canvas id="game" width="420" height="520"></canvas>
+
+<div id="ui">
+<div id="menu">
+<button onclick="startGame()">スタート</button>
+</div>
+
+<div id="hud" style="display:none;">
+スコア: <span id="score">0</span>　
+コンボ: <span id="combo">0</span><br>
+緊張: <span id="danger">0</span>%
+</div>
+
+<h3>ランキング</h3>
+<ol id="ranking"></ol>
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let holding = false; // スマホ操作中
-let teacherLook = false; // 先生が見てる
+// ===== 状態 =====
+let gameState = "menu";
+let holding = false;
+let teacherState = "idle";
 let timer = 0;
 let score = 0;
-let gameOver = false;
+let combo = 0;
+let danger = 0;
+let speed = 1;
 
-let highscore = localStorage.getItem("highscore") || 0;
-document.getElementById("highscore").textContent = highscore;
+// ===== 音 =====
+const sound = (f,t=0.1)=>{
+    let a=new (window.AudioContext||window.webkitAudioContext)();
+    let o=a.createOscillator();
+    let g=a.createGain();
+    o.connect(g); g.connect(a.destination);
+    o.frequency.value=f;
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+t);
+    setTimeout(()=>a.close(),t*1000);
+};
 
-// キー操作
-document.addEventListener("keydown", e => {
-    if (e.code === "Space") holding = true;
+// ===== 入力 =====
+document.addEventListener("keydown",e=>{
+if(e.code==="Space") holding=true;
 });
-document.addEventListener("keyup", e => {
-    if (e.code === "Space") holding = false;
+document.addEventListener("keyup",e=>{
+if(e.code==="Space") holding=false;
 });
 
-// メインループ
-function update() {
-    if (gameOver) return;
+// ===== ランキング =====
+let ranking = JSON.parse(localStorage.getItem("rank")||"[]");
 
-    timer++;
-
-    // 先生の視線ランダム
-    if (timer % 120 === 0) {
-        teacherLook = Math.random() < 0.5;
-    }
-
-    // スコア加算
-    if (holding && !teacherLook) {
-        score++;
-    }
-
-    // バレたら終了
-    if (holding && teacherLook) {
-        gameOver = true;
-
-        if (score > highscore) {
-            highscore = score;
-            localStorage.setItem("highscore", highscore);
-        }
-
-        setTimeout(() => {
-            alert("バレた！スコア: " + score);
-            location.reload();
-        }, 100);
-    }
-
-    draw();
-    document.getElementById("score").textContent = score;
-
-    requestAnimationFrame(update);
+function saveScore(s){
+ranking.push(s);
+ranking.sort((a,b)=>b-a);
+ranking=ranking.slice(0,10);
+localStorage.setItem("rank",JSON.stringify(ranking));
+drawRanking();
 }
 
-// 描画
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function drawRanking(){
+let el=document.getElementById("ranking");
+el.innerHTML="";
+ranking.forEach(s=>{
+let li=document.createElement("li");
+li.textContent=s;
+el.appendChild(li);
+});
+}
+drawRanking();
 
-    // 背景
-    ctx.fillStyle = "#444";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+// ===== ゲーム開始 =====
+function startGame(){
+gameState="play";
+document.getElementById("menu").style.display="none";
+document.getElementById("hud").style.display="block";
 
-    // プレイヤー
-    ctx.fillStyle = holding ? "#0f0" : "#888";
-    ctx.fillRect(170, 350, 60, 60);
-
-    // 先生
-    ctx.fillStyle = teacherLook ? "#f00" : "#aaa";
-    ctx.fillRect(150, 50, 100, 80);
-
-    // テキスト
-    ctx.fillStyle = "white";
-    ctx.font = "16px sans-serif";
-    ctx.fillText(teacherLook ? "見てる！！" : "見てない", 150, 150);
+holding=false;
+teacherState="idle";
+timer=0;
+score=0;
+combo=0;
+danger=0;
+speed=1;
 }
 
-// スタート
+// ===== メインループ =====
+function update(){
+if(gameState!=="play"){
+drawMenu();
+requestAnimationFrame(update);
+return;
+}
+
+timer++;
+speed+=0.0005;
+
+// ===== 先生AI =====
+if(timer % Math.floor(80/speed)===0){
+let r=Math.random();
+
+if(r<0.4) teacherState="look";
+else if(r<0.6) teacherState="fake";
+else if(r<0.8) teacherState="spam";
+else teacherState="idle";
+}
+
+// spam状態
+if(teacherState==="spam" && Math.random()<0.1){
+teacherState="look";
+}
+
+// ===== ゲームロジック =====
+if(holding){
+if(teacherState==="look"){
+danger+=2;
+combo=0;
+}else{
+score+=1+combo*0.2;
+combo++;
+}
+}else{
+danger-=1;
+combo=0;
+}
+
+danger=Math.max(0,Math.min(100,danger));
+
+// ===== ゲームオーバー =====
+if(danger>=100){
+sound(120,0.4);
+saveScore(Math.floor(score));
+gameState="over";
+}
+
+// ===== 描画 =====
+drawGame();
+
+document.getElementById("score").textContent=Math.floor(score);
+document.getElementById("combo").textContent=combo;
+document.getElementById("danger").textContent=danger;
+
+requestAnimationFrame(update);
+}
+
+// ===== 描画 =====
+function drawGame(){
+ctx.clearRect(0,0,420,520);
+
+// 背景
+ctx.fillStyle="#222";
+ctx.fillRect(0,0,420,520);
+
+// プレイヤー
+ctx.fillStyle=holding?"#00ffcc":"#555";
+ctx.fillRect(180,380,60,80);
+
+// 先生
+if(teacherState==="look") ctx.fillStyle="#ff3333";
+else if(teacherState==="fake") ctx.fillStyle="#ffaa00";
+else if(teacherState==="spam") ctx.fillStyle="#ff00ff";
+else ctx.fillStyle="#aaa";
+
+ctx.fillRect(160,80,100,100);
+
+// テキスト
+ctx.fillStyle="white";
+ctx.font="18px sans-serif";
+
+let txt="";
+if(teacherState==="look") txt="ガチ視線";
+else if(teacherState==="fake") txt="フェイント";
+else if(teacherState==="spam") txt="連続監視";
+else txt="油断中";
+
+ctx.fillText(txt,150,220);
+
+// 危険ゲージ
+ctx.fillStyle="red";
+ctx.fillRect(10,10,danger*3,10);
+}
+
+// ===== メニュー =====
+function drawMenu(){
+ctx.clearRect(0,0,420,520);
+ctx.fillStyle="white";
+ctx.font="24px sans-serif";
+ctx.fillText("スペースキーで操作",90,250);
+}
+
+// ===== 終了画面 =====
+setInterval(()=>{
+if(gameState==="over"){
+alert("終了 スコア:"+Math.floor(score));
+location.reload();
+}
+},500);
+
+// ===== 開始 =====
 update();
 </script>
-
 </body>
 </html>
