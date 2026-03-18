@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Mini Platformer</title>
+<title>Styled Platformer</title>
 <style>
 body { margin:0; background:#222; color:white; text-align:center; font-family:sans-serif;}
-canvas { background:#87ceeb; display:block; margin:20px auto; border:2px solid black;}
+canvas { display:block; margin:20px auto; border:2px solid black;}
 </style>
 </head>
 <body>
 
-<h2>Mini Platformer</h2>
-<p>← → 移動 / スペース ジャンプ</p>
+<h2>Platformer 改良版</h2>
+<p>← → 移動 / ↑ or スペース ジャンプ</p>
 <canvas id="game" width="800" height="400"></canvas>
 
 <script>
@@ -24,42 +24,26 @@ document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
 // ===== プレイヤー =====
-let player = {
-  x: 50, y: 0, w: 30, h: 30,
-  vx: 0, vy: 0, onGround: false
-};
-
+let player = { x:50,y:0,w:30,h:30,vx:0,vy:0,onGround:false };
 const gravity = 0.5;
+let cameraX = 0;
 
-// ===== ステージデータ =====
-let levels = [
-  {
-    platforms: [
-      {x:0,y:350,w:800,h:50},
-      {x:200,y:280,w:100,h:20},
-      {x:350,y:240,w:100,h:20},
-    ],
-    enemies: [
-      {x:300,y:320,w:30,h:30,dir:1}
-    ],
-    goal: {x:700,y:300,w:30,h:50}
-  },
-  {
-    platforms: [
-      {x:0,y:350,w:800,h:50},
-      {x:150,y:300,w:100,h:20},
-      {x:300,y:260,w:100,h:20},
-      {x:500,y:220,w:100,h:20},
-    ],
-    enemies: [
-      {x:200,y:320,w:30,h:30,dir:1},
-      {x:550,y:190,w:30,h:30,dir:-1}
-    ],
-    goal: {x:720,y:170,w:30,h:50}
-  }
-];
-
-let currentLevel = 0;
+// ===== ステージ =====
+let level = {
+  width:2000,
+  platforms:[
+    {x:0,y:350,w:2000,h:50},
+    {x:300,y:280,w:120,h:20},
+    {x:600,y:240,w:120,h:20},
+    {x:1000,y:300,w:150,h:20},
+    {x:1400,y:260,w:150,h:20}
+  ],
+  enemies:[
+    {x:500,y:320,w:30,h:30,dir:1},
+    {x:1200,y:320,w:30,h:30,dir:-1}
+  ],
+  goal:{x:1800,y:300,w:40,h:50}
+};
 
 // ===== 当たり判定 =====
 function hit(a,b){
@@ -71,25 +55,21 @@ function hit(a,b){
 
 // ===== リセット =====
 function reset(){
-  player.x = 50;
-  player.y = 0;
-  player.vx = 0;
-  player.vy = 0;
+  player.x=50; player.y=0;
+  player.vx=0; player.vy=0;
+  keys = {}; // ←バグ修正（入力リセット）
 }
 
 // ===== 更新 =====
 function update(){
-  let level = levels[currentLevel];
-
   // 移動
   player.vx = 0;
   if(keys["ArrowRight"]) player.vx = 3;
   if(keys["ArrowLeft"]) player.vx = -3;
-
   player.x += player.vx;
 
-  // ジャンプ
-  if(keys[" "] && player.onGround){
+  // ジャンプ（↑ or スペース）
+  if((keys[" "] || keys["ArrowUp"]) && player.onGround){
     player.vy = -10;
     player.onGround = false;
   }
@@ -97,10 +77,9 @@ function update(){
   // 重力
   player.vy += gravity;
   player.y += player.vy;
-
   player.onGround = false;
 
-  // 足場との当たり
+  // 足場
   level.platforms.forEach(p=>{
     if(hit(player,p)){
       if(player.vy > 0){
@@ -114,17 +93,11 @@ function update(){
   // 敵
   level.enemies.forEach(e=>{
     e.x += e.dir * 2;
+    if(e.x < 0 || e.x > level.width-30) e.dir *= -1;
 
-    // 端で反転
-    if(e.x < 0 || e.x > canvas.width-30){
-      e.dir *= -1;
-    }
-
-    // プレイヤーと接触
     if(hit(player,e)){
-      // 上から踏む
       if(player.vy > 0 && player.y < e.y){
-        e.x = -100; // 消す
+        e.x = -100;
         player.vy = -8;
       } else {
         reset();
@@ -132,46 +105,82 @@ function update(){
     }
   });
 
-  // 落下
-  if(player.y > canvas.height){
-    reset();
+  // カメラ
+  cameraX = player.x - 400;
+  if(cameraX < 0) cameraX = 0;
+  if(cameraX > level.width - canvas.width){
+    cameraX = level.width - canvas.width;
   }
+
+  // 落下
+  if(player.y > canvas.height) reset();
 
   // ゴール
   if(hit(player, level.goal)){
-    currentLevel++;
-    if(currentLevel >= levels.length){
-      alert("全クリ！");
-      currentLevel = 0;
-    }
+    alert("クリア！");
     reset();
   }
 }
 
 // ===== 描画 =====
 function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  let level = levels[currentLevel];
 
-  // 足場
-  ctx.fillStyle = "green";
+  // 空（グラデーション）
+  let grad = ctx.createLinearGradient(0,0,0,400);
+  grad.addColorStop(0,"#87CEEB");
+  grad.addColorStop(1,"#E0F6FF");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,800,400);
+
+  // 雲
+  ctx.fillStyle="white";
+  for(let i=0;i<5;i++){
+    let x = (i*300 - cameraX*0.3) % 1200;
+    ctx.beginPath();
+    ctx.arc(x,80,20,0,Math.PI*2);
+    ctx.arc(x+20,80,25,0,Math.PI*2);
+    ctx.arc(x+40,80,20,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // 足場（レンガ風）
   level.platforms.forEach(p=>{
-    ctx.fillRect(p.x,p.y,p.w,p.h);
+    let x = p.x - cameraX;
+    ctx.fillStyle="#8B4513";
+    ctx.fillRect(x,p.y,p.w,p.h);
+    ctx.strokeStyle="#5a2e0c";
+    for(let i=0;i<p.w;i+=20){
+      ctx.strokeRect(x+i,p.y,20,p.h);
+    }
   });
 
-  // 敵
-  ctx.fillStyle = "red";
+  // 敵（簡易クリボー風）
   level.enemies.forEach(e=>{
-    ctx.fillRect(e.x,e.y,e.w,e.h);
+    let x = e.x - cameraX;
+    ctx.fillStyle="#8B4513";
+    ctx.beginPath();
+    ctx.arc(x+15,e.y+15,15,0,Math.PI*2);
+    ctx.fill();
+    // 目
+    ctx.fillStyle="black";
+    ctx.fillRect(x+8,e.y+10,4,4);
+    ctx.fillRect(x+18,e.y+10,4,4);
   });
 
-  // ゴール
-  ctx.fillStyle = "gold";
-  ctx.fillRect(level.goal.x, level.goal.y, level.goal.w, level.goal.h);
+  // ゴール（旗）
+  let gx = level.goal.x - cameraX;
+  ctx.fillStyle="black";
+  ctx.fillRect(gx, level.goal.y, 5, 50);
+  ctx.fillStyle="red";
+  ctx.fillRect(gx+5, level.goal.y, 20, 15);
 
-  // プレイヤー
-  ctx.fillStyle = "black";
-  ctx.fillRect(player.x,player.y,player.w,player.h);
+  // プレイヤー（顔つき）
+  let px = player.x - cameraX;
+  ctx.fillStyle="black";
+  ctx.fillRect(px,player.y,30,30);
+  ctx.fillStyle="white";
+  ctx.fillRect(px+5,player.y+5,8,8);
+  ctx.fillRect(px+17,player.y+5,8,8);
 }
 
 // ===== ループ =====
