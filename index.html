@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Mini Kart</title>
+<title>Mini Kart DX</title>
 <style>
 body { margin:0; background:#111; color:white; text-align:center; }
 canvas { background:#222; display:block; margin:20px auto; }
@@ -10,66 +10,131 @@ canvas { background:#222; display:block; margin:20px auto; }
 </head>
 <body>
 
-<h1>Mini Kart</h1>
+<h1>Mini Kart DX</h1>
 <canvas id="game" width="400" height="500"></canvas>
-<p>← → で操作</p>
+<p>← → 移動 / スペース ドリフト</p>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let playerX = 200;
-let speed = 5;
-let obstacles = [];
+// ===== プレイヤー =====
+let player = {
+    x: 200,
+    speed: 5,
+    drift: false,
+    driftPower: 0
+};
+
+// ===== CPU =====
+let cpu = {
+    x: 200,
+    speed: 4
+};
+
+// ===== 入力 =====
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key]=true);
+document.addEventListener("keyup", e => keys[e.key]=false);
+
+// ===== 障害物・アイテム =====
+let objects = [];
 let score = 0;
 let gameOver = false;
 
-// 入力
-document.addEventListener("keydown", e=>{
-    if(e.key==="ArrowLeft") playerX -= 20;
-    if(e.key==="ArrowRight") playerX += 20;
-});
+// ===== 音 =====
+const sound = (f,t=0.1)=>{
+    let a=new (window.AudioContext||window.webkitAudioContext)();
+    let o=a.createOscillator();
+    let g=a.createGain();
+    o.connect(g); g.connect(a.destination);
+    o.frequency.value=f;
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+t);
+    setTimeout(()=>a.close(),t*1000);
+};
 
-// 障害物生成
+// ===== 生成 =====
 function spawn(){
-    obstacles.push({
-        x: Math.random()*360,
+    let type = Math.random();
+    objects.push({
+        x: 120 + Math.random()*160,
         y: -20,
-        type: Math.random()<0.2 ? "boost":"rock"
+        type: type<0.2?"boost":type<0.3?"banana":"rock"
     });
 }
 
-// 更新
+// ===== 更新 =====
 function update(){
 if(gameOver) return;
 
+// 入力処理
+if(keys["ArrowLeft"]) player.x -= 4;
+if(keys["ArrowRight"]) player.x += 4;
+
+// ドリフト
+if(keys[" "]){
+    player.drift = true;
+    player.driftPower += 0.2;
+} else {
+    if(player.drift){
+        player.speed += player.driftPower;
+        sound(800,0.1);
+    }
+    player.driftPower = 0;
+    player.drift = false;
+}
+
+// CPU AI（簡易）
+cpu.x += (200 - cpu.x)*0.02 + (Math.random()-0.5)*2;
+
+// オブジェクト生成
 if(Math.random()<0.03) spawn();
 
-obstacles.forEach(o=>{
-    o.y += speed;
+// 移動
+objects.forEach(o=>{
+    o.y += player.speed;
 });
 
 // 衝突
-for(let o of obstacles){
-    if(o.y>400 && Math.abs(o.x-playerX)<30){
+objects.forEach(o=>{
+    // プレイヤー
+    if(o.y>420 && Math.abs(o.x-player.x)<25){
         if(o.type==="rock"){
             gameOver=true;
+            sound(120,0.3);
             alert("クラッシュ！スコア:"+score);
             location.reload();
-        } else {
-            speed+=1;
-            score+=50;
+        }
+        if(o.type==="boost"){
+            player.speed += 2;
+            score += 50;
+            sound(900,0.1);
+        }
+        if(o.type==="banana"){
+            player.speed -= 2;
+            sound(200,0.1);
         }
     }
-}
 
-score++;
+    // CPU
+    if(o.y>420 && Math.abs(o.x-cpu.x)<25){
+        if(o.type==="rock"){
+            cpu.speed -= 1;
+        }
+    }
+});
+
+// スコア
+score += Math.floor(player.speed);
+
+// 描画
 draw();
 
 requestAnimationFrame(update);
 }
 
-// 描画
+// ===== 描画 =====
 function draw(){
 ctx.clearRect(0,0,400,500);
 
@@ -79,19 +144,28 @@ ctx.fillRect(100,0,200,500);
 
 // プレイヤー
 ctx.fillStyle="cyan";
-ctx.fillRect(playerX,420,30,50);
+ctx.fillRect(player.x,420,30,50);
 
-// 障害物
-obstacles.forEach(o=>{
-    ctx.fillStyle = o.type==="rock"?"red":"yellow";
-    ctx.fillRect(o.x,o.y,30,30);
+// CPU
+ctx.fillStyle="orange";
+ctx.fillRect(cpu.x,380,30,50);
+
+// オブジェクト
+objects.forEach(o=>{
+    if(o.type==="rock") ctx.fillStyle="red";
+    if(o.type==="boost") ctx.fillStyle="yellow";
+    if(o.type==="banana") ctx.fillStyle="lime";
+    ctx.fillRect(o.x,o.y,25,25);
 });
 
-// スコア
+// UI
 ctx.fillStyle="white";
 ctx.fillText("Score:"+score,10,20);
+ctx.fillText("Speed:"+player.speed.toFixed(1),10,40);
+ctx.fillText("Drift:"+player.driftPower.toFixed(1),10,60);
 }
 
+// ===== スタート =====
 update();
 </script>
 
