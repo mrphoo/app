@@ -2,10 +2,10 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>しょぼんのパクリ</title>
+<title>しょぼんのパクリ v2</title>
 <style>
-body{margin:0;background:#222;text-align:center;}
-canvas{display:block;margin:10px auto;background:#87CEEB;}
+body{margin:0;background:#111;text-align:center;color:#fff;}
+canvas{display:block;margin:auto;background:#87CEEB;}
 </style>
 </head>
 <body>
@@ -13,162 +13,133 @@ canvas{display:block;margin:10px auto;background:#87CEEB;}
 <canvas id="game" width="800" height="400"></canvas>
 
 <script>
-const c=document.getElementById("game");
-const ctx=c.getContext("2d");
+const c=game,ctx=c.getContext("2d");
 
-// ===== 入力 =====
 let keys={},prev={};
-document.addEventListener("keydown",e=>keys[e.key]=true);
-document.addEventListener("keyup",e=>keys[e.key]=false);
+onkeydown=e=>keys[e.key]=true;
+onkeyup=e=>keys[e.key]=false;
 
-// ===== プレイヤー =====
-let player,spawn;
-let gravity=0.5;
-let cam=0;
-let invincible=0;
+let player,cam=0;
 
-// ===== 初期化 =====
 function init(){
- spawn={x:50,y:300};
- player={x:spawn.x,y:spawn.y,w:32,h:32,vx:0,vy:0,onGround:false,jumpCount:0,jumpBuffer:0};
- invincible=0;
-
- // ブロック状態リセット
- level.blocks.forEach(b=>b.used=false);
+ player={
+  x:50,y:300,
+  vx:0,vy:0,
+  w:32,h:32,
+  on:false,
+  jump:0,
+  jumpHold:0
+ };
 }
 
-// ===== レベル =====
-let level={
- width:2000,
+const level={
  ground:350,
- blocks:[
-  {x:300,y:260,type:"q",used:false},
-  {x:350,y:260,type:"brick"},
-  {x:700,y:260,type:"q",used:false}
- ],
  platforms:[
-  {x:500,y:300,w:100,h:10,pass:true}
+  {x:300,y:300,w:120},
+  {x:500,y:260,w:120},
+  {x:700,y:220,w:120}
  ],
  enemies:[
-  {x:600,y:318,dir:1},
-  {x:1200,y:318,dir:-1}
+  {x:600,y:318,dir:1}
  ],
- goal:{x:1800,y:280}
+ goal:{x:1000,y:280}
 };
 
-// ===== 当たり判定 =====
 function hit(a,b){
- return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+ return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+10&&a.y+a.h>b.y;
 }
 
-// ===== 更新 =====
 function update(){
 
- let jumpPress=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
- if(jumpPress) player.jumpBuffer=6;
+ // --- 移動（加速あり）
+ if(keys["ArrowRight"]) player.vx+=0.5;
+ if(keys["ArrowLeft"]) player.vx-=0.5;
 
- player.vx=0;
- if(keys["ArrowRight"])player.vx=3;
- if(keys["ArrowLeft"])player.vx=-3;
+ player.vx*=0.85; // 摩擦
+ if(Math.abs(player.vx)<0.1) player.vx=0;
 
  player.x+=player.vx;
 
- // ジャンプ処理（遅延バッファ）
- if(player.jumpBuffer>0 && player.jumpCount<2){
+ // --- ジャンプ
+ let press=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
+
+ if(press && player.jump<2){
   player.vy=-10;
-  player.jumpCount++;
-  player.jumpBuffer=0;
+  player.jump++;
+  player.jumpHold=10;
  }
 
- player.jumpBuffer--;
+ if(keys[" "]||keys["ArrowUp"]){
+  if(player.jumpHold>0){
+   player.vy-=0.3;
+   player.jumpHold--;
+  }
+ }
 
- player.vy+=gravity;
+ // --- 重力
+ player.vy+=0.5;
  player.y+=player.vy;
- player.onGround=false;
+ player.on=false;
 
  // 地面
  if(player.y+32>level.ground){
   player.y=level.ground-32;
   player.vy=0;
-  player.onGround=true;
-  player.jumpCount=0;
+  player.on=true;
+  player.jump=0;
  }
 
- // 足場（↓ですり抜け）
+ // 足場
  level.platforms.forEach(p=>{
   if(keys["ArrowDown"]) return;
-  if(hit(player,{...p,w:p.w,h:p.h}) && player.vy>0){
+  if(hit(player,p) && player.vy>0){
    player.y=p.y-32;
    player.vy=0;
-   player.onGround=true;
-   player.jumpCount=0;
-  }
- });
-
- // ブロック
- level.blocks.forEach(b=>{
-  if(b.type==="q" && !b.used){
-   if(player.y > b.y && hit(player,{...b,w:32,h:32})){
-    b.used=true;
-   }
+   player.on=true;
+   player.jump=0;
   }
  });
 
  // 敵
  level.enemies.forEach(e=>{
   e.x+=e.dir*2;
-  if(e.x<0||e.x>level.width)e.dir*=-1;
-
-  if(hit(player,{...e,w:32,h:32}) && invincible<=0){
-    player.x=spawn.x;
-    player.y=spawn.y;
-    invincible=60;
+  if(hit(player,{...e,w:32})){
+   if(player.vy>0){
+    player.vy=-8;
+   }else{
+    init();
+   }
   }
  });
 
- if(invincible>0)invincible--;
-
  // ゴール
- if(hit(player,{...level.goal,w:10,h:70})){
+ if(hit(player,{...level.goal,w:10})){
   init();
  }
 
- cam=player.x-400;
- if(cam<0)cam=0;
- if(cam>level.width-800)cam=level.width-800;
+ // カメラ（なめらか）
+ cam+=(player.x-400-cam)*0.1;
 
  prev={...keys};
 }
 
-// ===== 描画 =====
 function draw(){
 
- // 空（グラデーション）
- let grad=ctx.createLinearGradient(0,0,0,400);
- grad.addColorStop(0,"#87CEEB");
- grad.addColorStop(1,"#ffffff");
- ctx.fillStyle=grad;
+ ctx.fillStyle="#87CEEB";
  ctx.fillRect(0,0,800,400);
 
- // 地面
  ctx.fillStyle="#654321";
  ctx.fillRect(0,350,800,50);
-
- // ブロック
- level.blocks.forEach(b=>{
-  ctx.fillStyle=b.type==="q"?(b.used?"#aaa":"gold"):"#b5651d";
-  ctx.fillRect(b.x-cam,b.y,32,32);
- });
 
  // 足場
  ctx.fillStyle="#888";
  level.platforms.forEach(p=>{
-  ctx.fillRect(p.x-cam,p.y,p.w,p.h);
+  ctx.fillRect(p.x-cam,p.y,p.w,10);
  });
 
- // 敵（簡易アニメ）
+ // 敵
+ ctx.fillStyle="brown";
  level.enemies.forEach(e=>{
-  ctx.fillStyle="brown";
   ctx.beginPath();
   ctx.arc(e.x-cam+16,320,16,0,Math.PI*2);
   ctx.fill();
@@ -178,14 +149,11 @@ function draw(){
  ctx.fillStyle="red";
  ctx.fillRect(level.goal.x-cam,280,10,70);
 
- // プレイヤー（点滅＝無敵）
- if(invincible%10<5){
-  ctx.fillStyle="blue";
-  ctx.fillRect(player.x-cam,player.y,32,32);
- }
+ // プレイヤー
+ ctx.fillStyle="blue";
+ ctx.fillRect(player.x-cam,player.y,32,32);
 }
 
-// ===== ループ =====
 function loop(){
  update();
  draw();
@@ -195,6 +163,5 @@ function loop(){
 init();
 loop();
 </script>
-
 </body>
 </html>
