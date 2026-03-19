@@ -2,248 +2,146 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>しょぼんのパクリ（罠コース）</title>
+<title>Space Invader Lite</title>
 <style>
-body{margin:0;background:#111;text-align:center;color:#fff;}
-canvas{display:block;margin:auto;background:#87CEEB;}
+    body {
+        margin: 0;
+        background: black;
+        color: white;
+        text-align: center;
+        font-family: monospace;
+    }
+    canvas {
+        background: #000;
+        display: block;
+        margin: 0 auto;
+        border: 2px solid white;
+    }
 </style>
 </head>
 <body>
-
-<div id="ui"></div>
-<canvas id="c" width="800" height="400"></canvas>
+<h2>SPACE INVADER (Lite)</h2>
+<p>← → で移動 / スペースで射撃</p>
+<canvas id="game" width="400" height="600"></canvas>
 
 <script>
-const ctx=c.getContext("2d");
-const ui=document.getElementById("ui");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-// ===== 入力 =====
-let keys={},prev={};
-onkeydown=e=>keys[e.key]=true;
-onkeyup=e=>keys[e.key]=false;
+let player = { x: 180, y: 550, w: 40, h: 10, speed: 5 };
+let bullets = [];
+let enemies = [];
+let keys = {};
+let gameOver = false;
 
-// ===== 定数 =====
-const TILE=32;
-const GRAV=0.5,MAX_FALL=12;
-const ACC=0.6,AIR=0.3,FRIC=0.85,MAX=5,JUMP=11;
-
-// ===== マップ =====
-const map=[
-"................................................",
-"................................................",
-".................c..............................",
-".................?..............................",
-"................................................",
-"......###.................c.....................",
-"................................................",
-"####.............####.............###......##G..",
-"................................................",
-"####################..##########..##############"
-];
-
-// ===== 状態 =====
-let p,cam=0,score=0,state="play";
-let coins=[],blocks=[],items=[],enemies=[],goal={x:0,y:0};
-let fakeBlocks=[];
-
-// ===== 初期化 =====
-function build(){
- coins=[];blocks=[];items=[];fakeBlocks=[];
-
- enemies=[{x:300,y:0,vx:1,vy:0}];
-
- map.forEach((row,y)=>{
-  [...row].forEach((ch,x)=>{
-   let px=x*TILE,py=y*TILE;
-
-   if(ch==="c")coins.push({x:px+16,y:py+16,got:false,trap:false});
-   if(ch==="?")blocks.push({x:px,y:py,used:false});
-   if(ch==="G")goal={x:px,y:py};
-
-   // 偽物床（適当に配置）
-   if(y===9 && x===12){
-    fakeBlocks.push({x:px,y:py,active:true});
-   }
-  });
- });
-
- // トラップコイン
- coins.push({x:450,y:200,got:false,trap:true});
+// 敵生成
+for (let r = 0; r < 5; r++) {
+    for (let c = 0; c < 8; c++) {
+        enemies.push({
+            x: 40 + c * 40,
+            y: 40 + r * 30,
+            w: 20,
+            h: 20,
+            alive: true
+        });
+    }
 }
 
-function init(){
- p={x:64,y:0,w:28,h:28,vx:0,vy:0,on:false,coyote:0,buf:0,big:false};
+let enemyDir = 1;
 
- for(let y=0;y<map.length;y++){
-  if(map[y][2]==="#"){
-   p.y=y*TILE-28;
-   break;
-  }
- }
+// 入力
+document.addEventListener("keydown", e => keys[e.code] = true);
+document.addEventListener("keyup", e => keys[e.code] = false);
 
- build();
-}
-init();
+// 更新
+function update() {
+    if (gameOver) return;
 
-// ===== 判定 =====
-function solid(px,py){
- let tx=Math.floor(px/TILE),ty=Math.floor(py/TILE);
- if(!map[ty]||!map[ty][tx])return false;
- return map[ty][tx]==="#";
-}
+    // プレイヤー移動
+    if (keys["ArrowLeft"]) player.x -= player.speed;
+    if (keys["ArrowRight"]) player.x += player.speed;
 
-function isGrounded(p){
- return (
-  solid(p.x+2,p.y+p.h)||
-  solid(p.x+p.w/2,p.y+p.h)||
-  solid(p.x+p.w-2,p.y+p.h)
- );
-}
+    // 弾発射
+    if (keys["Space"]) {
+        if (bullets.length < 3) {
+            bullets.push({ x: player.x + 18, y: player.y, w: 4, h: 10 });
+        }
+        keys["Space"] = false;
+    }
 
-// ===== 更新 =====
-function update(){
+    // 弾移動
+    bullets.forEach(b => b.y -= 7);
+    bullets = bullets.filter(b => b.y > 0);
 
- let acc=p.on?ACC:AIR;
+    // 敵移動
+    let moveDown = false;
+    enemies.forEach(e => {
+        if (!e.alive) return;
+        e.x += enemyDir;
+        if (e.x < 0 || e.x + e.w > canvas.width) moveDown = true;
+    });
 
- if(keys["ArrowRight"])p.vx+=acc;
- if(keys["ArrowLeft"])p.vx-=acc;
+    if (moveDown) {
+        enemyDir *= -1;
+        enemies.forEach(e => e.y += 10);
+    }
 
- p.vx*=FRIC;
- p.vx=Math.max(-MAX,Math.min(MAX,p.vx));
+    // 当たり判定
+    bullets.forEach(b => {
+        enemies.forEach(e => {
+            if (e.alive &&
+                b.x < e.x + e.w &&
+                b.x + b.w > e.x &&
+                b.y < e.y + e.h &&
+                b.y + b.h > e.y
+            ) {
+                e.alive = false;
+                b.y = -100;
+            }
+        });
+    });
 
- let jump=(keys[" "]&&!prev[" "])||(keys["ArrowUp"]&&!prev["ArrowUp"]);
- if(jump)p.buf=6;
-
- p.vy+=GRAV;
- if(p.vy>MAX_FALL)p.vy=MAX_FALL;
-
- if(p.coyote>0)p.coyote--;
-
- if(p.buf>0 && p.coyote>0){
-  p.vy=-JUMP;
-  p.buf=0;
-  p.coyote=0;
- }
- p.buf--;
-
- if(!keys[" "]&&!keys["ArrowUp"] && p.vy<0)p.vy+=0.5;
-
- // X
- p.x+=p.vx;
- if(solid(p.x,p.y)||solid(p.x+p.w,p.y)){
-  p.x-=p.vx;p.vx=0;
- }
-
- // Y
- p.y+=p.vy;
- p.on=false;
-
- if(p.vy>=0){
-  if(isGrounded(p)){
-   p.y=Math.floor((p.y+p.h)/TILE)*TILE-p.h;
-   p.vy=0;
-   p.on=true;
-   p.coyote=6;
-  }
- }
-
- if(p.vy<0){
-  if(solid(p.x+2,p.y)||solid(p.x+p.w-2,p.y)){
-   p.vy=0;
-  }
- }
-
- // ===== 偽物床 =====
- fakeBlocks.forEach(b=>{
-  if(b.active &&
-     p.x<b.x+32 && p.x+p.w>b.x &&
-     p.y+p.h>b.y && p.y+p.h<b.y+10){
-    b.active=false;
-  }
- });
-
- // ===== コイン =====
- coins.forEach(c=>{
-  if(!c.got && Math.abs(p.x-c.x)<20 && Math.abs(p.y-c.y)<20){
-   c.got=true;
-   score+=10;
-
-   // トラップ
-   if(c.trap){
-    p.vy=-15; // 強制ジャンプ（落とす）
-   }
-  }
- });
-
- // ===== ゴールトラップ =====
- if(
-  p.x<goal.x+32 &&
-  p.x+p.w>goal.x &&
-  p.y<goal.y+64 &&
-  p.y+p.h>goal.y
- ){
-  // 偽物：落とす
-  p.vy=-12;
-  p.x-=100;
- }
-
- cam+=(p.x-400-cam)*0.1;
- prev={...keys};
- ui.textContent=`SCORE ${score}`;
+    // ゲームオーバー判定
+    enemies.forEach(e => {
+        if (e.alive && e.y + e.h > player.y) {
+            gameOver = true;
+        }
+    });
 }
 
-// ===== 描画 =====
-function draw(){
+// 描画
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
- ctx.fillStyle="#87CEEB";
- ctx.fillRect(0,0,800,400);
+    // プレイヤー
+    ctx.fillStyle = "lime";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
 
- // 地面
- map.forEach((row,y)=>{
-  [...row].forEach((ch,x)=>{
-   if(ch==="#"){
-    ctx.fillStyle="#7a5230";
-    ctx.fillRect(x*TILE-cam,y*TILE,32,32);
-   }
-  });
- });
+    // 弾
+    ctx.fillStyle = "yellow";
+    bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
- // 偽物床
- fakeBlocks.forEach(b=>{
-  if(b.active){
-   ctx.fillStyle="#999";
-   ctx.fillRect(b.x-cam,b.y,32,32);
-  }
- });
+    // 敵
+    ctx.fillStyle = "red";
+    enemies.forEach(e => {
+        if (e.alive) ctx.fillRect(e.x, e.y, e.w, e.h);
+    });
 
- // コイン
- coins.forEach(c=>{
-  if(c.got)return;
-  ctx.fillStyle="yellow";
-  ctx.beginPath();
-  ctx.arc(c.x-cam,c.y,8,0,6.28);
-  ctx.fill();
- });
-
- // ゴール
- ctx.fillStyle="white";
- ctx.fillRect(goal.x-cam+12,goal.y-96,4,96);
- ctx.fillStyle="red";
- ctx.fillRect(goal.x-cam+16,goal.y-96,20,12);
-
- // プレイヤー
- ctx.fillStyle="blue";
- ctx.fillRect(p.x-cam,p.y,28,28);
+    if (gameOver) {
+        ctx.fillStyle = "white";
+        ctx.font = "30px monospace";
+        ctx.fillText("GAME OVER", 100, 300);
+    }
 }
 
-// ===== ループ =====
-function loop(){
- update();
- draw();
- requestAnimationFrame(loop);
+// ループ
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
 }
+
 loop();
 </script>
-
 </body>
 </html>
